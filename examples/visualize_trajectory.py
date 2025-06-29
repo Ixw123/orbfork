@@ -1,20 +1,49 @@
 from ase.io import read, write
 from ase.visualize import view
 
+from ase.visualize.plot import plot_atoms
+import matplotlib.pyplot as plt
+
 from io import StringIO
 from PIL import Image, ImageChops
 import os
+import glob
 import argparse
 
+def get_most_recent_directory(base_path):
+    # Get all entries in base_path that are directories
+    dirs = [d for d in glob.glob(os.path.join(base_path, '*')) if os.path.isdir(d) and "output" in d]
+    if not dirs:
+        return None
+    most_recent = max(dirs, key=os.path.getmtime)
+    return most_recent
+
+def save_atoms_png(atoms, filename, radii=0.5):
+    fig, ax = plt.subplots(figsize=(4, 4), dpi=300)
+    plot_atoms(atoms, ax, radii=radii, rotation=("90x,90y,90z"))
+    ax.set_axis_off()
+    fig.tight_layout(pad=0) 
+    fig.savefig(filename, bbox_inches='tight', pad_inches=0, transparent=True)
+    plt.close(fig)
 
 def crop_image(png_file):
     img = Image.open(png_file)
+    
+    if img.mode != "RGB":
+        print(f"Converting {png_file} from {img.mode} to RGB")
+        img = img.convert("RGB")
+    
     bg = Image.new(img.mode, img.size, img.getpixel((0, 0)))
     diff = ImageChops.difference(img, bg)
     bbox = diff.getbbox()
     if bbox:
         img = img.crop(bbox)
-        img.save(png_file)
+        # Force safe save
+    try:
+        img.save(png_file, format="PNG")
+    except Exception as e:
+        print(f"Error saving image {png_file}: {e}")
+        raise
 
 # Function to extract a specific frame from the .xyz file
 def extract_frame(lines, frame_number):
@@ -44,6 +73,10 @@ def visualize_trajectory(xyz_file, reaction_name):
 
         atoms = read(file_wrapper, format="xyz")
 
+        # write("test.png", atoms, format="png")
+        # Image.open("test.png").show()
+        # print("Mode:", Image.open("test.png").mode)
+
         # del atoms[
         #     [atom.index for atom in atoms if atom.index not in [327, 1154, 546, 547]]
         # ]
@@ -63,8 +96,9 @@ def visualize_trajectory(xyz_file, reaction_name):
         # atoms.wrap()
         # full jpeg
         # first_frame = frames[0]
-        write(f_name, atoms, format="png", radii=.5)
-        crop_image(f_name)
+        write(f_name, atoms, format="png")
+        # save_atoms_png(atoms, f_name)
+        # crop_image(f_name)
         png_files.append(f_name)
 
         # write('frame0.png', atoms, format='png')
@@ -99,7 +133,7 @@ def create_gif(png_files, gif_name="output.gif", duration=200):
     """
     images = []
     for png_file in png_files:
-        img = Image.open(png_file)
+        img = Image.open(png_file).convert("RGB")
         images.append(img)
 
     if images:
@@ -119,12 +153,22 @@ def create_gif(png_files, gif_name="output.gif", duration=200):
 # examples/output/.xyz
 def main(reaction_name):
     # Path to the .xyz file
-    xyz_file = f"output/{reaction_name}.xyz"
+    basePath = os.getcwd()
+    print(basePath)
+
+    # Get most recently modified dir hack
+    latestRun = get_most_recent_directory(basePath)
+    print(latestRun)
+
+    xyz_file = os.path.join(latestRun, reaction_name + ".xyz")
+
+    print(xyz_file)
+    # xyz_file = f"output/{reaction_name}.xyz"
 
     # Visualize the trajectory
     png_files = visualize_trajectory(xyz_file, reaction_name)
     # Create a GIF from the PNG files
-    create_gif(png_files, gif_name=f"output/{reaction_name}.gif", duration=200)
+    create_gif(png_files, gif_name=latestRun + "/" + reaction_name + ".gif", duration=200)
 
 
 if __name__ == "__main__":
@@ -135,7 +179,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     reaction_name = args.reaction_name
 
-    assert os.path.exists(
-        f"output/{reaction_name}.xyz"
-    ), f"File output/{reaction_name}.xyz does not exist."
+    # assert os.path.exists(
+    #     f"output/{reaction_name}.xyz"
+    # ), f"File output/{reaction_name}.xyz does not exist."
     main(reaction_name)

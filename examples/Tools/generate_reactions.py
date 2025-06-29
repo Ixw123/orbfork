@@ -11,4 +11,5 @@ dimensions = [25, 25, 25]
 conformers = 25
 temperature = 873.15 # 800
 reaction_name = "CH4-O2"
-generate_configuration(smiles_strings, counts, mp, dimensions, conformers, temperature, outfile=f"{reaction_name}_{temperature}.xyz")
+# Assumes the dimensions are hemogenous 
+generate_configuration(smiles_strings, counts, mp, dimensions, conformers, temperature, outfile=f"{reaction_name}_{dimensions[0]}_{temperature}.xyz")

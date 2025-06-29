@@ -9,6 +9,7 @@ from ase.md.langevin import Langevin
 from ase import units
 from ase.md import MDLogger
 import os
+import datetime
 
 def setup_device() -> torch.device:
     """Set up and return the appropriate compute device."""
@@ -134,7 +135,7 @@ class ReactionTrajectoryManager:
         self.pending_reactions = []
         self.last_reaction_frame = -float('inf')
     
-    def add_frame(self, atoms, step: int):
+    def add_frame(self, atoms, step: int, outDir):
         """Updates the pre-reaction buffer and pending reaction captures."""
         current_frame = self.frame_counter
         abs_time = current_frame * self.frame_interval * (self.timestep/units.fs)
@@ -147,7 +148,7 @@ class ReactionTrajectoryManager:
         for event in self.pending_reactions[:]:
             event["capture_buffer"].append(frame_data)
             if len(event["capture_buffer"]) >= event["required_total"]:
-                self._write_reaction_trajectory(event)
+                self._write_reaction_trajectory(event, outputDir=outDir)
                 self.last_reaction_frame = event["reaction_frame"]
                 self.pending_reactions.remove(event)
     
@@ -171,17 +172,19 @@ class ReactionTrajectoryManager:
         print(f"Reaction detected at MD step {step} (time {reaction_time:.1f} fs): {reaction_str}")
         print(f"Queued reaction event. Waiting until capture buffer reaches {self.reaction_capture_size} frames.")
     
-    def _write_reaction_trajectory(self, event):
+    def _write_reaction_trajectory(self, event, outputDir):
         """Writes the captured reaction trajectory to file."""
         # Replace long phrases with abbreviations
         short_reaction_str = event["reaction_str"].replace("Bond Formed", "BF").replace("Bond Broken", "BB")
         safe_reaction_str = short_reaction_str.replace(" ", "_").replace("(", "").replace(")", "").replace(",", "_")
         
-        output_file = os.path.join("output", f"reaction_traj_{event['reaction_time']:.1f}fs_{safe_reaction_str}.xyz")
+        # Try to have this work a bit nicer
+
+        output_file = os.path.join(str(outputDir), f"reaction_traj_{event['reaction_time']:.1f}fs_{safe_reaction_str}.xyz")
         MAX_FILENAME_LEN = 150
         
         if len(output_file) > MAX_FILENAME_LEN:
-            output_file = os.path.join("output", f"reaction_traj_{event['reaction_time']:.1f}fs.xyz")
+            output_file = os.path.join(str(outputDir), f"reaction_traj_{event['reaction_time']:.1f}fs.xyz")
             print(f"Warning: Reaction file name too long, using shortened name: {output_file}")
         
         print(f"Writing reaction trajectory for reaction at frame {event['reaction_frame']} "
@@ -310,15 +313,17 @@ def print_bonding_info(atoms, file=None):
         write_output(" No bonds detected.")
 
 def run_md_simulation_with_reaction_capture(
-    input_file: str = "./examples/CH4-O2_873.15.xyz",
+    # add in code to automatically set temp and cell size based on input file name
+    dt,
+    input_file: str = "./examples/CH4-O2_25_873.15.xyz",
     output_dir: str = "output",
     output_file: str = None,
-    cell_size: float = 25,
+    cell_size: float = 25, # 26.25,
     temperature_K: float = 873.15,
     timestep: float = 0.5 * units.fs,          # 0.5 fs timestep
     friction: float = 0.01 / units.fs,
     log_interval_fs: float = 10.0,              # Time between log entries (fs)
-    total_time: float = 100000.0,                # Total simulation time in fs
+    total_time: float = 1000.0,                # Total simulation time in fs
     md_traj_interval_fs: float = 500.0,        # Time between main trajectory frames (fs)
     bond_check_interval_fs: float = 10.0,       # Time between bond checks (fs)
     ema_alpha: float = 0.1,                     # Smoothing factor for the EMA of the bonding graph
@@ -328,9 +333,14 @@ def run_md_simulation_with_reaction_capture(
     reaction_traj_interval_fs: float = None,    # Time between captured frames (fs)
 ):
     """Run MD simulation with reaction event capture using an EMA-based bonding graph scheme."""
-    
+    year = str(dt.year)
+    month = str(dt.month)
+    day = str(dt.day)
+    hour = str(dt.hour)
+    min = str(dt.min)
+    outDir = output_dir + "_" + year + "_" + month + "_" + day + "_" + hour + "_" + min + "-" + str(total_time) + "-" + str(temperature_K) + "-" + str(cell_size)
     # Create output directory
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(outDir, exist_ok=True)
     
     # Calculate default values if not provided
     if reaction_time_window is None:
@@ -351,9 +361,9 @@ def run_md_simulation_with_reaction_capture(
         output_file = f"{base}_md{ext}"
     
     # Build full output file paths
-    output_file_path = os.path.join(output_dir, output_file)
-    md_log_path = os.path.join(output_dir, "md.log")
-    bonding_log_path = os.path.join(output_dir, "bonding.log")
+    output_file_path = os.path.join(outDir, output_file)
+    md_log_path = os.path.join(outDir, "md.log")
+    bonding_log_path = os.path.join(outDir, "bonding.log")
     
     # Setup computation device
     device = setup_device()
@@ -410,7 +420,7 @@ def run_md_simulation_with_reaction_capture(
                  comment=f"Time: {dyn.get_number_of_steps() * (timestep/units.fs):.1f} fs, Cell: {atoms.get_cell()}"),
         interval=md_traj_interval_steps
     )
-    dyn.attach(lambda: traj_manager.add_frame(atoms, dyn.get_number_of_steps()), 
+    dyn.attach(lambda: traj_manager.add_frame(atoms, dyn.get_number_of_steps(), outDir), 
               interval=reaction_traj_interval_steps)
     dyn.attach(update_bonds_wrapper, interval=bond_check_interval_steps)
     dyn.attach(bonding_logger, interval=log_interval_steps)
@@ -436,16 +446,17 @@ def run_md_simulation_with_reaction_capture(
         # Write what is left in the pending reactions to the correct files
         for event in traj_manager.pending_reactions[:]:
             event["capture_buffer"].append(frame_data)
-            traj_manager._write_reaction_trajectory(event)
+            traj_manager._write_reaction_trajectory(event, outputDir=outDir)
             traj_manager.last_reaction_frame = event["reaction_frame"]
             traj_manager.pending_reactions.remove(event)
 
         print("\nWriting bonding information at the end of the simulation")
-        with open(os.path.join(output_dir, "bondingend.log"), 'w') as f:
+        with open(os.path.join(outDir, "bondingend.log"), 'w') as f:
             print_bonding_info(atoms, f)
 
         
         print("\nMD simulation completed or interrupted!")
 
 if __name__ == "__main__":
-    run_md_simulation_with_reaction_capture() 
+    dt = datetime.datetime.now()
+    run_md_simulation_with_reaction_capture(dt) 
