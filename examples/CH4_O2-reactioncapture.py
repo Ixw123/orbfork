@@ -178,7 +178,7 @@ class ReactionTrajectoryManager:
         short_reaction_str = event["reaction_str"].replace("Bond Formed", "BF").replace("Bond Broken", "BB")
         safe_reaction_str = short_reaction_str.replace(" ", "_").replace("(", "").replace(")", "").replace(",", "_")
         
-        # Try to have this work a bit nicer
+        # Try to have this work a bit nicer to have it keep track of some information still
 
         output_file = os.path.join(str(outputDir), f"reaction_traj_{event['reaction_time']:.1f}fs_{safe_reaction_str}.xyz")
         MAX_FILENAME_LEN = 150
@@ -333,6 +333,7 @@ def run_md_simulation_with_reaction_capture(
     reaction_traj_interval_fs: float = None,    # Time between captured frames (fs)
 ):
     """Run MD simulation with reaction event capture using an EMA-based bonding graph scheme."""
+    # Fix the day hour min output here 
     year = str(dt.year)
     month = str(dt.month)
     day = str(dt.day)
