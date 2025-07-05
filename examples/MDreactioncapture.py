@@ -1,3 +1,9 @@
+'''
+    Generic script to run a molecular dynamics simulation with reaction event capture.
+    also outputs to a new directory with the date and time of the simulation and the simulation type.
+    also saves the atoms to a .xyz file every 10 fs even if no reaction is detected.
+'''
+
 import numpy as np
 import torch
 from collections import deque
@@ -134,6 +140,8 @@ class ReactionTrajectoryManager:
         self.pre_reaction_buffer = deque(maxlen=self.reaction_pre_frames)
         self.pending_reactions = []
         self.last_reaction_frame = -float('inf')
+        
+        self.written_frame_steps = set()  # Track written frames to avoid duplicates
     
     def add_frame(self, atoms, step: int, outDir):
         """Updates the pre-reaction buffer and pending reaction captures."""
@@ -192,6 +200,11 @@ class ReactionTrajectoryManager:
         
         with open(output_file, 'w') as f:
             for atoms, abs_time in event["capture_buffer"]:
+                
+                frame_step = round(abs_time / (self.timestep / units.fs))
+                # add the frame step to the set to track it for the logging of bond information
+                self.written_frame_steps.add(frame_step)  # Track it
+                
                 relative_time = abs_time - event["reaction_time"]
                 cell_info = f"Cell: {atoms.get_cell()}"
                 comment = (f"Time: {abs_time:.1f} fs, "
@@ -315,15 +328,15 @@ def print_bonding_info(atoms, file=None):
 def run_md_simulation_with_reaction_capture(
     # add in code to automatically set temp and cell size based on input file name
     dt,
-    input_file: str = "./examples/CH4-O2_100_873.15.xyz",
+    input_file: str = "./examples/CH4-O2_30_873.15_100_[CH4]_200_O=O.xyz",
     output_dir: str = "output",
     output_file: str = None,
-    cell_size: float = 100, # 25, # 26.25,
+    cell_size: float = 30, # 25, # 26.25,
     temperature_K: float = 1000,
     timestep: float = 0.5 * units.fs,          # 0.5 fs timestep
     friction: float = 0.01 / units.fs,
     log_interval_fs: float = 10.0,              # Time between log entries (fs)
-    total_time: float = 1000000.0,                # Total simulation time in fs (should take 1000000000000 for methane oxidization)
+    total_time: float = 1000.0,                # Total simulation time in fs (should take 1000000000000 for methane oxidization)
     md_traj_interval_fs: float = 500.0,        # Time between main trajectory frames (fs)
     bond_check_interval_fs: float = 10.0,       # Time between bond checks (fs)
     ema_alpha: float = 0.1,                     # Smoothing factor for the EMA of the bonding graph
@@ -333,7 +346,8 @@ def run_md_simulation_with_reaction_capture(
     reaction_traj_interval_fs: float = None,    # Time between captured frames (fs)
 ):
     """Run MD simulation with reaction event capture using an EMA-based bonding graph scheme."""
-    simulationStr = input_file.split("/")[-1].split(".")[0]
+    simulationStr = input_file.split("/")[-1].split(".xyz")[0]  # Get the base name of the input file
+     
     year = str(dt.year)
     month = str(dt.month)
     day = str(dt.day)
@@ -418,9 +432,24 @@ def run_md_simulation_with_reaction_capture(
     # Logger for even if no reactions are detected
     
     def write_frame_xyz():
-        print(f"Writing frame at step {dyn.get_number_of_steps()} since no reaction was detected.")
         step = dyn.get_number_of_steps()
+        if step in traj_manager.written_frame_steps:
+            return  # Already written in reaction trajectory
+        
+            # Skip if this frame is already queued in a pending reaction
+        for event in traj_manager.pending_reactions:
+            if event["reaction_time"] == step * timestep / units.fs:
+                print(f"Skipping frame at step {step} since it is already queued for reaction capture.")
+                return
+            # for atoms_frame, abs_time in event["capture_buffer"]:
+            #     print(f"Checking if frame at step {step} is already queued for reaction capture.")
+            #     queued_step = round(abs_time / (timestep / units.fs))
+            #     print(f"Queued step: {queued_step}, Current step: {step}")
+            #     if step == queued_step:
+            #         return  # This frame is already queued to be written later
+        
         time_fs = step * (timestep / units.fs)
+        print(f"Writing frame at step {dyn.get_number_of_steps()} ({time_fs}fs) since no reaction was detected.")
         filename = os.path.join(outDir, f"frame_{time_fs:.0f}fs.xyz")
         comment = f"Time: {time_fs:.1f} fs, Cell: {atoms.get_cell()}"
         write(filename, atoms, format='xyz', comment=comment)
@@ -428,9 +457,7 @@ def run_md_simulation_with_reaction_capture(
 
     # setting the variable for the fs incrememnt to track the atoms every 10 fs
     frame_output_interval_steps = int(10.0 / (timestep / units.fs))
-    dyn.attach(write_frame_xyz, interval=frame_output_interval_steps)
 
-    
     # Attach observers
     dyn.attach(
         lambda: write(output_file_path, atoms, append=True, format='xyz',
@@ -442,7 +469,7 @@ def run_md_simulation_with_reaction_capture(
     dyn.attach(update_bonds_wrapper, interval=bond_check_interval_steps)
     dyn.attach(bonding_logger, interval=log_interval_steps)
     dyn.attach(MDLogger(dyn, atoms, md_log_path), interval=log_interval_steps)
-    
+    dyn.attach(write_frame_xyz, interval=frame_output_interval_steps)
     
     # Run simulation
     print("\nStarting MD simulation...")

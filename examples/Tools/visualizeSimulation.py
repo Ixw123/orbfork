@@ -41,7 +41,9 @@ def find_xyz_files(directory):
 
     for root, _, files in os.walk(directory):
         for file in files:
+            print(f"Checking file: {file} in {root}")
             if file.endswith('.xyz') and 'reaction_traj' in file:
+                print(f"Found .xyz file: {file} in {root}")
                 file_path = os.path.join(root, file)
                 xyz_files.append(file_path)
 
@@ -89,8 +91,10 @@ def find_xyz_files(directory):
 
 if __name__ == "__main__":
     directory_to_search = sys.argv[1]  # Replace with your directory path
+    # print(f"Searching for .xyz files in directory: {directory_to_search}")
     xyz_files, atom_types, color_map = find_xyz_files(directory_to_search)
     # print("Found .xyz files:")
+    
     # for file in xyz_files:
     #     print(file)
 
@@ -163,6 +167,7 @@ if __name__ == "__main__":
     frames = []
 
     # Generate frames for each .xyz file
+    # Change this so the putText includes the bonding info to some degree
     for file in xyz_files:
         # print(f"Visualizing {file}")
         img = visualize_xyz(file, color_map)
