@@ -6,6 +6,27 @@ from PIL import Image
 
 # Dubug why there seems to be no change between 90 fs and 200 fs on dir output_2025_6_28_23_0001-01-01 00:00:00-1000.0-873.15-25
 
+# TODO make sure that this properly parses the xyz files with reaction_traj_ in the name since right now it just looks at the first entry and is missing things that the reaction_traj_ files have picks up outside the steps 
+# TODO make color map better contrast
+# TODO make the gif determine the frames based on fs steps 
+
+def correctCoordinate(x, y, z, cellSize):
+    """
+    Correct the coordinates to fit within the unit cell.
+    
+    Args:
+        x, y, z (float): Coordinates of the atom.
+        cellSize (float): Size of the unit cell.
+    
+    Returns:
+        tuple: Corrected coordinates (x, y, z).
+    """
+    x = cellSize if float(x % cellSize) == 0.0 else float(x % cellSize)
+    y = cellSize if float(y % cellSize) == 0.0 else float(y % cellSize)
+    z = cellSize if float(z % cellSize) == 0.0 else float(z % cellSize)
+    
+    return x, y, z
+
 # Extract the number after 'reaction_traj_' and sort the files
 def extract_number(file_path):
     base_name = os.path.basename(file_path)
@@ -41,9 +62,9 @@ def find_xyz_files(directory):
 
     for root, _, files in os.walk(directory):
         for file in files:
-            print(f"Checking file: {file} in {root}")
+            # print(f"Checking file: {file} in {root}")
             if file.endswith('.xyz') and 'reaction_traj' in file:
-                print(f"Found .xyz file: {file} in {root}")
+                # print(f"Found .xyz file: {file} in {root}")
                 file_path = os.path.join(root, file)
                 xyz_files.append(file_path)
 
@@ -112,6 +133,8 @@ if __name__ == "__main__":
 
             # Parse the .xyz file
             num_atoms = int(lines[0].strip())
+            # print(lines[1].strip().split()[-1][:-2])
+            cellSize = float(lines[1].strip().split()[-1][:-2])  # Assuming the second line contains the cell size
             atom_data = lines[2:2 + num_atoms]
 
             # Extract atom coordinates and types
@@ -123,6 +146,7 @@ if __name__ == "__main__":
                     continue
                 atom_type = parts[0]
                 x, y, z = map(float, parts[1:4])
+                x, y, z = correctCoordinate(x, y, z, cellSize)
                 coordinates.append((x, y, z))
                 atom_types_in_file.append(atom_type)
 
@@ -183,6 +207,7 @@ if __name__ == "__main__":
         frames.append(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
     # Save the frames as a GIF
+    # rename the gif with the directory info if there is directory info
     gif_path = os.path.join(directory_to_search, "visualization.gif")
     Image.fromarray(frames[0]).save(
     gif_path, save_all=True, append_images=[Image.fromarray(frame) for frame in frames[1:]], duration=500, loop=0

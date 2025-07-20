@@ -328,15 +328,15 @@ def print_bonding_info(atoms, file=None):
 def run_md_simulation_with_reaction_capture(
     # add in code to automatically set temp and cell size based on input file name
     dt,
-    input_file: str = "./examples/CH4-O2_30_873.15_100_[CH4]_200_O=O.xyz",
+    input_file: str = "./examples/HClWater.xyz",
     output_dir: str = "output",
     output_file: str = None,
-    cell_size: float = 30, # 25, # 26.25,
-    temperature_K: float = 1000,
+    cell_size: float = 25.25,
+    temperature_K: float = 300,
     timestep: float = 0.5 * units.fs,          # 0.5 fs timestep
     friction: float = 0.01 / units.fs,
     log_interval_fs: float = 10.0,              # Time between log entries (fs)
-    total_time: float = 1000.0,                # Total simulation time in fs (should take 1000000000000 for methane oxidization)
+    total_time: float = 1000.0,                # Total simulation time in fs
     md_traj_interval_fs: float = 500.0,        # Time between main trajectory frames (fs)
     bond_check_interval_fs: float = 10.0,       # Time between bond checks (fs)
     ema_alpha: float = 0.1,                     # Smoothing factor for the EMA of the bonding graph

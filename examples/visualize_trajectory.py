@@ -153,14 +153,14 @@ def create_gif(png_files, gif_name="output.gif", duration=200):
 # examples/output/.xyz
 def main(reaction_name):
     # Path to the .xyz file
-    basePath = os.getcwd()
-    print(basePath)
+    # basePath = os.getcwd()
+    # print(basePath)
 
     # Get most recently modified dir hack
-    latestRun = get_most_recent_directory(basePath)
-    print(latestRun)
+    # latestRun = get_most_recent_directory(basePath)
+    # print(latestRun)
 
-    xyz_file = os.path.join(latestRun, reaction_name + ".xyz")
+    xyz_file = os.path.join("output", reaction_name + ".xyz")
 
     print(xyz_file)
     # xyz_file = f"output/{reaction_name}.xyz"
@@ -168,7 +168,7 @@ def main(reaction_name):
     # Visualize the trajectory
     png_files = visualize_trajectory(xyz_file, reaction_name)
     # Create a GIF from the PNG files
-    create_gif(png_files, gif_name=latestRun + "/" + reaction_name + ".gif", duration=200)
+    create_gif(png_files, gif_name=reaction_name + ".gif", duration=200)
 
 
 if __name__ == "__main__":
