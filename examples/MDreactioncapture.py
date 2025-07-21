@@ -328,15 +328,15 @@ def print_bonding_info(atoms, file=None):
 def run_md_simulation_with_reaction_capture(
     # add in code to automatically set temp and cell size based on input file name
     dt,
-    input_file: str = "./examples/HClWater.xyz",
+    input_file: str = "./examples/CH4-O2_30_800_50_[CH4]_100_O=O.xyz",
     output_dir: str = "output",
     output_file: str = None,
-    cell_size: float = 25.25,
-    temperature_K: float = 300,
-    timestep: float = 0.5 * units.fs,          # 0.5 fs timestep
+    cell_size: float = 30,
+    temperature_K: float = 800,
+    timestep: float = 0.3 * units.fs,          # 0.3 fs timestep
     friction: float = 0.01 / units.fs,
     log_interval_fs: float = 10.0,              # Time between log entries (fs)
-    total_time: float = 1000.0,                # Total simulation time in fs
+    total_time: float = 10000.0,                # Total simulation time in fs
     md_traj_interval_fs: float = 500.0,        # Time between main trajectory frames (fs)
     bond_check_interval_fs: float = 10.0,       # Time between bond checks (fs)
     ema_alpha: float = 0.1,                     # Smoothing factor for the EMA of the bonding graph
@@ -353,7 +353,7 @@ def run_md_simulation_with_reaction_capture(
     day = str(dt.day)
     hour = str(dt.hour)
     min = str(dt.minute)
-    outDir = output_dir + "_" + simulationStr + "_" + year + "_" + month + "_" + day + "_" + hour + "_" + min + "-" + str(total_time) + "-" + str(temperature_K) + "-" + str(cell_size)
+    outDir = output_dir + "_" + simulationStr + "_" + year + "_" + month + "_" + day + "_" + hour + "_" + min + "-" + str(total_time) + "-" + str(temperature_K) + "-" + str(cell_size) + "-" + str(timestep)
     # Create output directory
     os.makedirs(outDir, exist_ok=True)
     
@@ -433,14 +433,20 @@ def run_md_simulation_with_reaction_capture(
     
     def write_frame_xyz():
         step = dyn.get_number_of_steps()
-        if step in traj_manager.written_frame_steps:
-            return  # Already written in reaction trajectory
+        # if not traj_manager.pending_reactions:
+        #     # No reaction has occurred yet, write xyz for every step
+        #     time_fs = step * (timestep / units.fs)
+        #     filename = os.path.join(outDir, f"frame_{time_fs:.0f}fs.xyz")
+        #     comment = f"Time: {time_fs:.1f} fs, Cell: {atoms.get_cell()}"
+        #     write(filename, atoms, format='xyz', comment=comment)
+        # if step in traj_manager.written_frame_steps:
+        #     return  # Already written in reaction trajectory
         
             # Skip if this frame is already queued in a pending reaction
-        for event in traj_manager.pending_reactions:
-            if event["reaction_time"] == step * timestep / units.fs:
-                print(f"Skipping frame at step {step} since it is already queued for reaction capture.")
-                return
+        # for event in traj_manager.pending_reactions:
+            # if event["reaction_time"] == step * timestep / units.fs:
+                # print(f"Skipping frame at step {step} since it is already queued for reaction capture.")
+                # return
             # for atoms_frame, abs_time in event["capture_buffer"]:
             #     print(f"Checking if frame at step {step} is already queued for reaction capture.")
             #     queued_step = round(abs_time / (timestep / units.fs))
@@ -449,7 +455,7 @@ def run_md_simulation_with_reaction_capture(
             #         return  # This frame is already queued to be written later
         
         time_fs = step * (timestep / units.fs)
-        print(f"Writing frame at step {dyn.get_number_of_steps()} ({time_fs}fs) since no reaction was detected.")
+        # print(f"Writing frame at step {dyn.get_number_of_steps()} ({time_fs}fs) since no reaction was detected.")
         filename = os.path.join(outDir, f"frame_{time_fs:.0f}fs.xyz")
         comment = f"Time: {time_fs:.1f} fs, Cell: {atoms.get_cell()}"
         write(filename, atoms, format='xyz', comment=comment)
@@ -495,6 +501,8 @@ def run_md_simulation_with_reaction_capture(
             traj_manager.last_reaction_frame = event["reaction_frame"]
             traj_manager.pending_reactions.remove(event)
 
+        
+        # TODO why does this seem to have more atoms bonded than in the begginning?
         print("\nWriting bonding information at the end of the simulation")
         with open(os.path.join(outDir, "bondingend.log"), 'w') as f:
             print_bonding_info(atoms, f)
